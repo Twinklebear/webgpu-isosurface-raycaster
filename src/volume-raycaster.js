@@ -71,8 +71,9 @@ import {
     indexBuffer.unmap();
 
     // Create a buffer to store the view parameters
+    const viewParamsSize = 4 * (16 + 4 + 4);
     var viewParamsBuffer = device.createBuffer(
-        {size: 20 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
+        {size: viewParamsSize, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
 
     var sampler = device.createSampler({
         magFilter: "linear",
@@ -113,7 +114,11 @@ import {
 
     var bindGroupLayout = device.createBindGroupLayout({
         entries: [
-            {binding: 0, visibility: GPUShaderStage.VERTEX, buffer: {type: "uniform"}},
+            {
+                binding: 0,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: {type: "uniform"}
+            },
             {binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {viewDimension: "3d"}},
             {binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {viewDimension: "2d"}},
             {binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: {type: "filtering"}}
@@ -235,17 +240,21 @@ import {
         projView = mat4.mul(projView, proj, camera.camera);
 
         var upload = device.createBuffer(
-            {size: 20 * 4, usage: GPUBufferUsage.COPY_SRC, mappedAtCreation: true});
+            {size: viewParamsSize, usage: GPUBufferUsage.COPY_SRC, mappedAtCreation: true});
         {
             var eyePos = camera.eyePos();
-            var map = new Float32Array(upload.getMappedRange());
-            map.set(projView);
-            map.set(eyePos, projView.length);
+            var map = upload.getMappedRange();
+            var fmap = new Float32Array(map);
+            var imap = new Int32Array(map);
+
+            fmap.set(projView);
+            fmap.set(eyePos, projView.length);
+            imap.set(volumeDims, projView.length + 4);
             upload.unmap();
         }
 
         var commandEncoder = device.createCommandEncoder();
-        commandEncoder.copyBufferToBuffer(upload, 0, viewParamsBuffer, 0, 20 * 4);
+        commandEncoder.copyBufferToBuffer(upload, 0, viewParamsBuffer, 0, viewParamsSize);
 
         renderPassDesc.colorAttachments[0].view = context.getCurrentTexture().createView();
         var renderPass = commandEncoder.beginRenderPass(renderPassDesc);

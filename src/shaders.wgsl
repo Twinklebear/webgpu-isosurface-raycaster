@@ -23,6 +23,7 @@ struct ViewParams {
     // just assume align/pad to vec4
     eye_pos: float4,
     //volume_scale: float4;
+    volume_dims: int4,
 };
 
 struct GridIterator {
@@ -66,9 +67,9 @@ fn init_grid_iterator(ray_org: float3, ray_dir: float3, t: f32, grid_dims: int3)
     return grid_iter;
 }
 
-fn grid_iterator_next_cell(iter: ptr<private, GridIterator, read_write>,
-                           cell_t_range: ptr<private, float2, write>,
-                           cell_id: ptr<private, int3, write>) -> bool {
+fn grid_iterator_next_cell(iter: ptr<function, GridIterator, read_write>,
+                           cell_t_range: ptr<function, float2, read_write>,
+                           cell_id: ptr<function, int3, read_write>) -> bool {
     // Please add arrow operator or something equivalent for it, this is terrible to type
     // and to read
     if (outside_grid((*iter).cell, (*iter).grid_dims)) {
@@ -143,35 +144,41 @@ fn linear_to_srgb(x: f32) -> f32 {
 fn fragment_main(in: VertexOutput) -> @location(0) float4 {
     var ray_dir = normalize(in.ray_dir);
 
-	var t_hit = intersect_box(in.transformed_eye, ray_dir);
-	if (t_hit.x > t_hit.y) {
-		discard;
-	}
-	t_hit.x = max(t_hit.x, 0.0);
+    var t_hit = intersect_box(in.transformed_eye, ray_dir);
+    if (t_hit.x > t_hit.y) {
+        discard;
+    }
+    t_hit.x = max(t_hit.x, 0.0);
 
-    var color = float4(0.0);
-	var dt_vec = 1.0 / (float3(256.0) * abs(ray_dir));
-    var dt_scale = 1.0;
-	var dt = dt_scale * min(dt_vec.x, min(dt_vec.y, dt_vec.z));
-	var p = in.transformed_eye + t_hit.x * ray_dir;
-	for (var t = t_hit.x; t < t_hit.y; t = t + dt) {
-		var val = textureSampleLevel(volume, tex_sampler, p, 0.0).r;
-		var val_color = float4(textureSampleLevel(colormap, tex_sampler, float2(val, 0.5), 0.0).rgb, val);
-		// Opacity correction
-		val_color.a = 1.0 - pow(1.0 - val_color.a, dt_scale);
+    // Scale the eye and ray direction from the 1^3 box to the volume grid
+    ray_dir *= float3(view_params.volume_dims.xyz);
+    var ray_org = in.transformed_eye * float3(view_params.volume_dims.xyz);
+    // TODO: For isosurface we need to translate onto the dual grid and use the dual grid dimensions
+    var iter = init_grid_iterator(ray_org, ray_dir, t_hit.x, view_params.volume_dims.xyz);
+
+    var color = float4(0);
+    var cell_id = int3(0);
+    var cell_t_range = float2(0);
+    while (grid_iterator_next_cell(&iter, &cell_t_range, &cell_id)) {
+        var t = 0.5 * (cell_t_range.x + cell_t_range.y);
+        var p = (ray_org + t * ray_dir) / float3(view_params.volume_dims.xyz);
+        var val = textureSampleLevel(volume, tex_sampler, p, 0.0).r;
+        var val_color = float4(textureSampleLevel(colormap, tex_sampler, float2(val, 0.5), 0.0).rgb, val);
+        // Opacity correction
+        val_color.a = 1.0 - pow(1.0 - val_color.a, (cell_t_range.y - cell_t_range.x) / 1.7);
+        val_color.a = clamp(val_color.a * 50.0, 0.0, 1.0);
         // WGSL can't do left hand size swizzling!?!?
         // https://github.com/gpuweb/gpuweb/issues/737 
         // That's ridiculous for a shader language.
         var tmp = color.rgb + (1.0 - color.a) * val_color.a * val_color.xyz; 
-		color.r = tmp.r;
-		color.g = tmp.g;
-		color.b = tmp.b;
-		color.a = color.a + (1.0 - color.a) * val_color.a;
-		if (color.a >= 0.95) {
-			break;
-		}
-		p = p + ray_dir * dt;
-	}
+        color.r = tmp.r;
+        color.g = tmp.g;
+        color.b = tmp.b;
+        color.a = color.a + (1.0 - color.a) * val_color.a;
+        if (color.a >= 0.95) {
+            break;
+        }
+    }
 
     color.r = linear_to_srgb(color.r);
     color.g = linear_to_srgb(color.g);
