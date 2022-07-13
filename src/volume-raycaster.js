@@ -71,7 +71,7 @@ import {
     indexBuffer.unmap();
 
     // Create a buffer to store the view parameters
-    const viewParamsSize = 4 * (16 + 4 + 4);
+    const viewParamsSize = 4 * (16 + 4 + 4 + 1);
     var viewParamsBuffer = device.createBuffer(
         {size: viewParamsSize, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
 
@@ -82,6 +82,8 @@ import {
 
     var volumePicker = document.getElementById("volumeList");
     var colormapPicker = document.getElementById("colormapList");
+    var isovalueSlider = document.getElementById("isovalue");
+    isovalueSlider.value = 128;
 
     fillSelector(volumePicker, volumes);
     fillSelector(colormapPicker, colormaps);
@@ -250,6 +252,7 @@ import {
             fmap.set(projView);
             fmap.set(eyePos, projView.length);
             imap.set(volumeDims, projView.length + 4);
+            fmap.set([isovalueSlider.value / 255.0], projView.length + 8);
             upload.unmap();
         }
 

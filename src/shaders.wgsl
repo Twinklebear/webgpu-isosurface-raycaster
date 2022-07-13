@@ -24,6 +24,7 @@ struct ViewParams {
     eye_pos: float4,
     //volume_scale: float4;
     volume_dims: int4,
+    isovalue: f32,
 };
 
 struct GridIterator {
@@ -35,6 +36,18 @@ struct GridIterator {
     t_max: float3,
     t: f32,
 };
+
+@group(0) @binding(0)
+var<uniform> view_params: ViewParams;
+
+@group(0) @binding(1)
+var volume: texture_3d<f32>;
+
+@group(0) @binding(2)
+var colormap: texture_2d<f32>;
+
+@group(0) @binding(3)
+var tex_sampler: sampler;
 
 fn outside_grid(p: int3, grid_dims: int3) -> bool {
     return any(p < int3(0)) || any(p >= grid_dims);
@@ -98,17 +111,33 @@ fn grid_iterator_next_cell(iter: ptr<function, GridIterator, read_write>,
     return true;
 }
 
-@group(0) @binding(0)
-var<uniform> view_params: ViewParams;
+// Load the vertex values for the dual cell 'cell_id's vertices
+// Vertex values will be returned in the order:
+// [v000, v100, v110, v010, v001, v101, v111, v011]
+// v000 = cell_id
+fn load_dual_cell(cell_id: int3, values: ptr<function, array<f32, 8>, read_write>) -> float2 {
+    let index_to_vertex = array<int3, 8> (
+        int3(0, 0, 0), // v000 = 0
+        int3(1, 0, 0), // v100 = 1
+        int3(0, 1, 0), // v010 = 2
+        int3(1, 1, 0), // v110 = 3
+        int3(0, 0, 1), // v001 = 4
+        int3(1, 0, 1), // v101 = 5
+        int3(0, 1, 1), // v011 = 6
+        int3(1, 1, 1)  // v111 = 7
+    );
 
-@group(0) @binding(1)
-var volume: texture_3d<f32>;
-
-@group(0) @binding(2)
-var colormap: texture_2d<f32>;
-
-@group(0) @binding(3)
-var tex_sampler: sampler;
+    var cell_range = float2(1e20f, -1e20f);
+    for (var i = 0; i < 8; i++) { 
+        let v = cell_id + index_to_vertex[i];
+        //var val = textureSampleLevel(volume, tex_sampler, p, 0.0).r;
+        var val = textureLoad(volume, v, 0).r;
+        (*values)[i] = val;
+        cell_range.x = min(cell_range.x, val);
+        cell_range.y = max(cell_range.y, val);
+    }
+    return cell_range;
+}
 
 @vertex
 fn vertex_main(vert: VertexInput) -> VertexOutput {
@@ -152,14 +181,24 @@ fn fragment_main(in: VertexOutput) -> @location(0) float4 {
 
     // Scale the eye and ray direction from the 1^3 box to the volume grid
     ray_dir *= float3(view_params.volume_dims.xyz);
-    var ray_org = in.transformed_eye * float3(view_params.volume_dims.xyz);
+    var ray_org = in.transformed_eye * float3(view_params.volume_dims.xyz) - float3(0.5);
+    let dual_grid_dims = view_params.volume_dims.xyz - int3(1);
+
     // TODO: For isosurface we need to translate onto the dual grid and use the dual grid dimensions
-    var iter = init_grid_iterator(ray_org, ray_dir, t_hit.x, view_params.volume_dims.xyz);
+    var iter = init_grid_iterator(ray_org, ray_dir, t_hit.x, dual_grid_dims);
 
     var color = float4(0);
     var cell_id = int3(0);
     var cell_t_range = float2(0);
     while (grid_iterator_next_cell(&iter, &cell_t_range, &cell_id)) {
+        var vertex_values: array<f32, 8>;
+        let cell_range = load_dual_cell(cell_id, &vertex_values);
+        if (view_params.isovalue >= cell_range.x && view_params.isovalue <= cell_range.y) {
+            color = float4(float3(cell_id) / float3(dual_grid_dims), 1.0);
+            break;
+        }
+        /*
+        // Old volume renderer
         var t = 0.5 * (cell_t_range.x + cell_t_range.y);
         var p = (ray_org + t * ray_dir) / float3(view_params.volume_dims.xyz);
         var val = textureSampleLevel(volume, tex_sampler, p, 0.0).r;
@@ -178,6 +217,7 @@ fn fragment_main(in: VertexOutput) -> @location(0) float4 {
         if (color.a >= 0.95) {
             break;
         }
+        */
     }
 
     color.r = linear_to_srgb(color.r);
