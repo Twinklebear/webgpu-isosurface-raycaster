@@ -182,7 +182,7 @@ import {
         }
     };
     controller.wheel = function(amt) {
-        camera.zoom(amt);
+        camera.zoom(amt * 0.1);
     };
     controller.pinch = controller.wheel;
     controller.twoFingerDrag = function(drag) {

@@ -280,6 +280,28 @@ fn marmitt_intersect(ray_org: float3,
     return false;
 }
 
+fn compute_gradient(p: float3,
+                    v000: float3,
+                    values: ptr<function, array<f32, 8>, read_write>) -> float3 {
+    let v111 = v000 + float3(1);
+    let deltas = array<float3, 3>(
+        float3(0.1, 0.0, 0.0),
+        float3(0.0, 0.1, 0.0),
+        float3(0.0, 0.0, 0.1)
+    );
+    var n = float3(0);
+    // TODO: Pretty sure it's the clamping that is producing at least the artifacts
+    // at the cell boundaries. Not sure about the bad looking gradient or surface in
+    // other areas though
+    n.x = trilinear_interpolate_in_cell(min(p + deltas[0], v111), v000, values)
+          - trilinear_interpolate_in_cell(max(p - deltas[0], v000), v000, values);
+    n.y = trilinear_interpolate_in_cell(min(p + deltas[1], v111), v000, values)
+          - trilinear_interpolate_in_cell(max(p - deltas[1], v000), v000, values);
+    n.z = trilinear_interpolate_in_cell(min(p + deltas[2], v111), v000, values)
+          - trilinear_interpolate_in_cell(max(p - deltas[2], v000), v000, values);
+    return normalize(n);
+}
+
 fn intersect_box(orig: float3, dir: float3) -> float2 {
 	var box_min = float3(0.0);
 	var box_max = float3(1.0);
@@ -348,6 +370,14 @@ fn fragment_main(in: VertexOutput) -> @location(0) float4 {
                                         &t_hit);
             if (hit) {
                 color = float4(float3(cell_id) / float3(dual_grid_dims), 1.0);
+                /*
+                let hit_p = ray_org + t_hit * ray_dir;
+                var normal = compute_gradient(hit_p, float3(cell_id), &vertex_values);
+                if (dot(normal, ray_dir) > 0.0) {
+                    normal = -normal;
+                }
+                color = float4((normal + float3(1.0)) * 0.5, 1.0);
+                */
                 break;
             }
         }
