@@ -53,6 +53,18 @@ fn outside_grid(p: int3, grid_dims: int3) -> bool {
     return any(p < int3(0)) || any(p >= grid_dims);
 }
 
+fn intersect_box(orig: float3, dir: float3, box_min: float3, box_max: float3) -> float2 {
+	var inv_dir = 1.0 / dir;
+	var tmin_tmp = (box_min - orig) * inv_dir;
+	var tmax_tmp = (box_max - orig) * inv_dir;
+	var tmin = min(tmin_tmp, tmax_tmp);
+	var tmax = max(tmin_tmp, tmax_tmp);
+	var t0 = max(tmin.x, max(tmin.y, tmin.z));
+	var t1 = min(tmax.x, min(tmax.y, tmax.z));
+	return float2(t0, t1);
+}
+
+
 // Initialize the grid traversal state. All positions/directions passed must be in the
 // grid coordinate system where a grid cell is 1^3 in size.
 fn init_grid_iterator(ray_org: float3, ray_dir: float3, t: f32, grid_dims: int3) -> GridIterator {
@@ -89,11 +101,14 @@ fn grid_iterator_next_cell(iter: ptr<function, GridIterator, read_write>,
         return false;
     }
     // Return the current cell range and ID to the caller
+    // TODO: This will start to drift and be wrong, because the cell interval here is not starting
+    // at the entry of the cell, but ray t + cell, so it's kind of drifting off. Need to
+    // track the actual cell entry t value even if it's negative in the first cell.
     (*cell_t_range).x = (*iter).t;
     (*cell_t_range).y = min((*iter).t_max.x, min((*iter).t_max.y, (*iter).t_max.z));
     *cell_id = (*iter).cell;
     if ((*cell_t_range).y < (*cell_t_range).x) {
-        return false;
+       return false;
     }
 
     // Move the iterator to the next cell we'll traverse
@@ -130,7 +145,6 @@ fn load_dual_cell(cell_id: int3, values: ptr<function, array<f32, 8>, read_write
     var cell_range = float2(1e20f, -1e20f);
     for (var i = 0; i < 8; i++) { 
         let v = cell_id + index_to_vertex[i];
-        //var val = textureSampleLevel(volume, tex_sampler, p, 0.0).r;
         var val = textureLoad(volume, v, 0).r;
         (*values)[i] = val;
         cell_range.x = min(cell_range.x, val);
@@ -148,10 +162,9 @@ fn compute_polynomial(p: float3,
     let v111 = v000 + float3(1);
     // Note: Grid voxels sizes are 1^3
     let a = array<float3, 2>(v111 - p, p - v000);
-    let b = array<float3, 2>(dir, -dir);
+    let b = array<float3, 2>(-dir, dir);
 
     var poly = float4(0);
-    poly.w -= view_params.isovalue;
     for (var k = 0; k < 2; k++) {
         for (var j = 0; j < 2; j++) {
             for (var i = 0; i < 2; i++) {
@@ -221,19 +234,28 @@ fn marmitt_intersect(ray_org: float3,
                      t_next: f32,
                      t_hit: ptr<function, f32, read_write>) -> bool
 {
+    if (t_next <= t_prev) {
+        return false;
+    }
     // The text seems to not say explicitly, but I think it is required to have
     // the ray "origin" within the cell for the cell-local coordinates for a to
-    // be computed properly. So here I set the cell_p to be at the midpoint of the
+    // be computed properly. Also because u, v, w have to be in [0, 1], so the points
+    // we're looking at need to be in the cell
+    // So here I set the cell_p to be at the midpoint of the
     // ray's overlap with the cell, which makes it easy to compute t_in/t_out and
     // avoid numerical issues with cell_p being right at the edge of the cell.
     let cell_p = ray_org + ray_dir * (t_prev + (t_next - t_prev) * 0.5f);
-    var t_in = -(t_next - t_prev) * 0.5f;
-    var t_out = (t_next - t_prev) * 0.5f;
-    let poly = compute_polynomial(cell_p, ray_dir, v000, values);
+    var t_in = -(t_next - t_prev) * 0.5f * length(ray_dir);
+    var t_out = (t_next - t_prev) * 0.5f * length(ray_dir);
+
+    let cell_ray_dir = normalize(ray_dir);
+
+    var poly = compute_polynomial(cell_p, cell_ray_dir, v000, values);
+    poly.w -= view_params.isovalue;
 
     var f_in = evaluate_polynomial(poly, t_in);
     var f_out = evaluate_polynomial(poly, t_out);
-    var roots = array<f32, 2>(0, 0);
+    var roots = array<f32, 2>(0.0, 0.0);
     // TODO: Seeming to get some holes in the surface with the Marmitt intersector
     if (solve_quadratic(float3(3.f * poly.x, 2.f * poly.y, poly.z), &roots)) {
         if (roots[0] >= t_in && roots[0] <= t_out) {
@@ -260,7 +282,7 @@ fn marmitt_intersect(ray_org: float3,
     // If the signs aren't equal we know there's an intersection in the cell
     if (sign(f_in) != sign(f_out)) {
         // Find the intersection via repeated linear interpolation
-        for (var i = 0; i < 10; i++) {
+        for (var i = 0; i < 3; i++) {
             let t = t_in + (t_out - t_in) * (-f_in) / (f_out - f_in);
             let f_t = evaluate_polynomial(poly, t);
             if (sign(f_t) == sign(f_in)) {
@@ -271,9 +293,9 @@ fn marmitt_intersect(ray_org: float3,
                 f_out = f_t;
             }
         }
-        *t_hit = t_in + (t_out - t_in) * (-f_in) / (f_out - f_in);
-        // Return t_hit relative to vol_eye
-        let hit_p = cell_p + ray_dir * *t_hit;
+        let cell_t_hit = t_in + (t_out - t_in) * (-f_in) / (f_out - f_in);
+        // Return t_hit relative to the ray origin
+        let hit_p = cell_p + cell_ray_dir * cell_t_hit;
         *t_hit = length(hit_p - ray_org) / length(ray_dir);
         return true;
     }
@@ -284,15 +306,18 @@ fn compute_gradient(p: float3,
                     v000: float3,
                     values: ptr<function, array<f32, 8>, read_write>) -> float3 {
     let v111 = v000 + float3(1);
+    let delta_step = 0.005;
     let deltas = array<float3, 3>(
-        float3(0.1, 0.0, 0.0),
-        float3(0.0, 0.1, 0.0),
-        float3(0.0, 0.0, 0.1)
+        float3(delta_step, 0.0, 0.0),
+        float3(0.0, delta_step, 0.0),
+        float3(0.0, 0.0, delta_step)
     );
     var n = float3(0);
-    // TODO: Pretty sure it's the clamping that is producing at least the artifacts
-    // at the cell boundaries. Not sure about the bad looking gradient or surface in
-    // other areas though
+    // TODO: The clamping is producing at least the artifacts at the cell boundaries,
+    // but it's not too visible. Some of the other kind of "banding" might be related
+    // to this as well? Hard to say. Making the delta small also helps reduce the effect,
+    // but also makes the surface appear bumpier since the normal isn't as smooth
+    // Maybe we can use some analytic/derivative based thing here to compute the normal instead?
     n.x = trilinear_interpolate_in_cell(min(p + deltas[0], v111), v000, values)
           - trilinear_interpolate_in_cell(max(p - deltas[0], v000), v000, values);
     n.y = trilinear_interpolate_in_cell(min(p + deltas[1], v111), v000, values)
@@ -300,19 +325,6 @@ fn compute_gradient(p: float3,
     n.z = trilinear_interpolate_in_cell(min(p + deltas[2], v111), v000, values)
           - trilinear_interpolate_in_cell(max(p - deltas[2], v000), v000, values);
     return normalize(n);
-}
-
-fn intersect_box(orig: float3, dir: float3) -> float2 {
-	var box_min = float3(0.0);
-	var box_max = float3(1.0);
-	var inv_dir = 1.0 / dir;
-	var tmin_tmp = (box_min - orig) * inv_dir;
-	var tmax_tmp = (box_max - orig) * inv_dir;
-	var tmin = min(tmin_tmp, tmax_tmp);
-	var tmax = max(tmin_tmp, tmax_tmp);
-	var t0 = max(tmin.x, max(tmin.y, tmin.z));
-	var t1 = min(tmax.x, min(tmax.y, tmax.z));
-	return float2(t0, t1);
 }
 
 fn linear_to_srgb(x: f32) -> f32 {
@@ -336,7 +348,7 @@ fn vertex_main(vert: VertexInput) -> VertexOutput {
 fn fragment_main(in: VertexOutput) -> @location(0) float4 {
     var ray_dir = normalize(in.ray_dir);
 
-    var t_hit = intersect_box(in.transformed_eye, ray_dir);
+    var t_hit = intersect_box(in.transformed_eye, ray_dir, float3(0.0), float3(1.0));
     if (t_hit.x > t_hit.y) {
         discard;
     }
@@ -344,7 +356,7 @@ fn fragment_main(in: VertexOutput) -> @location(0) float4 {
 
     // Scale the eye and ray direction from the 1^3 box to the volume grid
     ray_dir *= float3(view_params.volume_dims.xyz);
-    var ray_org = in.transformed_eye * float3(view_params.volume_dims.xyz) - float3(0.5);
+    let ray_org = in.transformed_eye * float3(view_params.volume_dims.xyz) - float3(0.5);
     let dual_grid_dims = view_params.volume_dims.xyz - int3(1);
 
     // TODO: For isosurface we need to translate onto the dual grid and use the dual grid dimensions
@@ -352,58 +364,34 @@ fn fragment_main(in: VertexOutput) -> @location(0) float4 {
 
     var color = float4(0);
     var cell_id = int3(0);
-    var cell_t_range = float2(0);
+    var cell_t_range = float2(0.0);
     while (grid_iterator_next_cell(&iter, &cell_t_range, &cell_id)) {
         var vertex_values: array<f32, 8>;
         let cell_range = load_dual_cell(cell_id, &vertex_values);
-        // TODO: Seems like the range doesn't quite match up with what it should be,
-        // having this filter here results in some errors on Neghip, while the actual
-        // surface does look right
-        if (true) {//view_params.isovalue >= cell_range.x && view_params.isovalue <= cell_range.y) {
-            var t_hit: f32;
+
+        if (view_params.isovalue >= cell_range.x && view_params.isovalue <= cell_range.y) {
+            var t_hit_iso: f32;
             let hit = marmitt_intersect(ray_org,
                                         ray_dir,
                                         float3(cell_id),
                                         &vertex_values,
                                         cell_t_range.x,
                                         cell_t_range.y,
-                                        &t_hit);
+                                        &t_hit_iso);
             if (hit) {
-                color = float4(float3(cell_id) / float3(dual_grid_dims), 1.0);
-                /*
-                let hit_p = ray_org + t_hit * ray_dir;
+                let hit_p = ray_org + t_hit_iso * ray_dir;
+                //color = float4(float3(t_hit_iso), 1.0);
+                //break;
+
                 var normal = compute_gradient(hit_p, float3(cell_id), &vertex_values);
-                if (dot(normal, ray_dir) > 0.0) {
+                if (dot(ray_dir, normal) > 0.0) {
                     normal = -normal;
                 }
                 color = float4((normal + float3(1.0)) * 0.5, 1.0);
-                */
                 break;
             }
         }
-        /*
-        // Old volume renderer
-        var t = 0.5 * (cell_t_range.x + cell_t_range.y);
-        var p = (ray_org + t * ray_dir) / float3(view_params.volume_dims.xyz);
-        var val = textureSampleLevel(volume, tex_sampler, p, 0.0).r;
-        var val_color = float4(textureSampleLevel(colormap, tex_sampler, float2(val, 0.5), 0.0).rgb, val);
-        // Opacity correction
-        val_color.a = 1.0 - pow(1.0 - val_color.a, (cell_t_range.y - cell_t_range.x) / 1.7);
-        val_color.a = clamp(val_color.a * 50.0, 0.0, 1.0);
-        // WGSL can't do left hand size swizzling!?!?
-        // https://github.com/gpuweb/gpuweb/issues/737 
-        // That's ridiculous for a shader language.
-        var tmp = color.rgb + (1.0 - color.a) * val_color.a * val_color.xyz; 
-        color.r = tmp.r;
-        color.g = tmp.g;
-        color.b = tmp.b;
-        color.a = color.a + (1.0 - color.a) * val_color.a;
-        if (color.a >= 0.95) {
-            break;
-        }
-        */
     }
-
     color.r = linear_to_srgb(color.r);
     color.g = linear_to_srgb(color.g);
     color.b = linear_to_srgb(color.b);

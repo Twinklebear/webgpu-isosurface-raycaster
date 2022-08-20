@@ -111,8 +111,12 @@ import {
 
     // Setup render outputs
     var swapChainFormat = "bgra8unorm";
-    context.configure(
-        {device: device, format: swapChainFormat, usage: GPUTextureUsage.OUTPUT_ATTACHMENT});
+    context.configure({
+        device: device,
+        format: swapChainFormat,
+        usage: GPUTextureUsage.OUTPUT_ATTACHMENT,
+        alphaMode: "premultiplied"
+    });
 
     var bindGroupLayout = device.createBindGroupLayout({
         entries: [
@@ -163,7 +167,12 @@ import {
     });
 
     var renderPassDesc = {
-        colorAttachments: [{view: undefined, loadOp: "clear", clearValue: [0.3, 0.3, 0.3, 1]}]
+        colorAttachments: [{
+            view: undefined,
+            loadOp: "clear",
+            storeOp: "store",
+            clearValue: [0.3, 0.3, 0.3, 1]
+        }]
     };
 
     var camera = new ArcballCamera(defaultEye, center, up, 2, [canvas.width, canvas.height]);
