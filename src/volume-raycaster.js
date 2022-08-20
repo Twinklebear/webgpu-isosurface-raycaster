@@ -207,6 +207,12 @@ import {
     var bindGroup =
         device.createBindGroup({layout: bindGroupLayout, entries: bindGroupEntries});
 
+    var upload = device.createBuffer({
+        size: viewParamsSize,
+        usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
+        mappedAtCreation: false
+    });
+
     while (true) {
         await animationFrame();
         if (document.hidden) {
@@ -241,9 +247,8 @@ import {
         // Update camera buffer
         projView = mat4.mul(projView, proj, camera.camera);
 
-        var upload = device.createBuffer(
-            {size: viewParamsSize, usage: GPUBufferUsage.COPY_SRC, mappedAtCreation: true});
         {
+            await upload.mapAsync(GPUMapMode.WRITE)
             var eyePos = camera.eyePos();
             var map = upload.getMappedRange();
             var fmap = new Float32Array(map);
@@ -270,8 +275,5 @@ import {
 
         renderPass.end();
         device.queue.submit([commandEncoder.finish()]);
-
-        // Explicitly release the GPU buffer instead of waiting for GC
-        upload.destroy();
     }
 })();
