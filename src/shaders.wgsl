@@ -43,12 +43,6 @@ var<uniform> view_params: ViewParams;
 @group(0) @binding(1)
 var volume: texture_3d<f32>;
 
-@group(0) @binding(2)
-var colormap: texture_2d<f32>;
-
-@group(0) @binding(3)
-var tex_sampler: sampler;
-
 fn outside_grid(p: int3, grid_dims: int3) -> bool {
     return any(p < int3(0)) || any(p >= grid_dims);
 }
@@ -159,6 +153,7 @@ fn compute_polynomial(p: float3,
     let v111 = v000 + float3(1);
     // Note: Grid voxels sizes are 1^3
     let a = array<float3, 2>(v111 - p, p - v000);
+    // Note: The b_0/b_1 equations seem to be flipped in Parker et al. '1998 
     let b = array<float3, 2>(-dir, dir);
 
     var poly = float4(0);

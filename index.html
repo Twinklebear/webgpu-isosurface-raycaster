@@ -24,11 +24,8 @@
                 <div class="col-12 mb-2">
                     <h4>Scene Selection</h4>
                 </div>
-                <div class="col-12 col-sm-6 mb-sm-0 mb-2">
+                <div class="col-12 col-sm-12 mb-sm-0 mb-2">
                     Volume: <select id="volumeList"></select>
-                </div>
-                <div class="col-12 col-sm-6 mb-2">
-                    Colormap: <select id="colormapList"></select>
                 </div>
                 <div class="col-12 mt-lg-2 mt-0">
                     <div class="form-group">
@@ -55,9 +52,12 @@
 
                     <p id="loadingText"></p>
                     <h4>Description</h4>
-                    This is a WebGPU implementation of a standard <a href="https://en.wikipedia.org/wiki/Volume_ray_casting">volume raycaster</a>
-                    which uses a single render-pass to raycast the volume.
-                    <a href="https://github.com/Twinklebear/webgpu-volume-raycaster">
+                    This is a WebGPU implementation of an implicit isosurface raycaster.
+                    Ray-isosurface intersections are computed
+                    using the technique described by Marmitt et al.
+                    <a href="http://hodad.bioen.utah.edu/~wald/Publications/2004/iso/IsoIsec_VMV2004.pdf">
+                        "Fast and Accurate Ray-Voxel Intersection Techniques for Iso-Surface Ray Tracing"</a>, 2004.
+                    <a href="https://github.com/Twinklebear/webgpu-isosurface-raycaster">
                         Get the code on GitHub!</a>
                 </div>
             </div>

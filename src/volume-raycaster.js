@@ -75,18 +75,11 @@ import {
     var viewParamsBuffer = device.createBuffer(
         {size: viewParamsSize, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
 
-    var sampler = device.createSampler({
-        magFilter: "linear",
-        minFilter: "linear",
-    });
-
     var volumePicker = document.getElementById("volumeList");
-    var colormapPicker = document.getElementById("colormapList");
     var isovalueSlider = document.getElementById("isovalue");
     isovalueSlider.value = 128;
 
     fillSelector(volumePicker, volumes);
-    fillSelector(colormapPicker, colormaps);
 
     // Fetch and upload the volume
     var volumeName = "Bonsai";
@@ -100,9 +93,6 @@ import {
             return;
         }
     }
-
-    var colormapName = "Cool Warm";
-    var colormapTexture = await uploadImage(device, colormaps[colormapName]);
 
     var volumeDims = getVolumeDimensions(volumes[volumeName]);
     var volumeTexture =
@@ -125,9 +115,7 @@ import {
                 visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
                 buffer: {type: "uniform"}
             },
-            {binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {viewDimension: "3d"}},
-            {binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {viewDimension: "2d"}},
-            {binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: {type: "filtering"}}
+            {binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {viewDimension: "3d"}}
         ]
     });
 
@@ -209,9 +197,7 @@ import {
 
     var bindGroupEntries = [
         {binding: 0, resource: {buffer: viewParamsBuffer}},
-        {binding: 1, resource: volumeTexture.createView()},
-        {binding: 2, resource: colormapTexture.createView()},
-        {binding: 3, resource: sampler},
+        {binding: 1, resource: volumeTexture.createView()}
     ];
     var bindGroup =
         device.createBindGroup({layout: bindGroupLayout, entries: bindGroupEntries});
@@ -228,7 +214,7 @@ import {
             continue;
         }
 
-        // Fetch a new volume or colormap if a new one was selected
+        // Fetch a new volume if a new one was selected
         if (volumeName != volumePicker.value) {
             volumeName = volumePicker.value;
             history.replaceState(history.state, "", "#" + volumeName);
@@ -240,15 +226,6 @@ import {
             });
 
             bindGroupEntries[1].resource = volumeTexture.createView();
-            bindGroup =
-                device.createBindGroup({layout: bindGroupLayout, entries: bindGroupEntries});
-        }
-
-        if (colormapName != colormapPicker.value) {
-            colormapName = colormapPicker.value;
-            colormapTexture = await uploadImage(device, colormaps[colormapName]);
-
-            bindGroupEntries[2].resource = colormapTexture.createView();
             bindGroup =
                 device.createBindGroup({layout: bindGroupLayout, entries: bindGroupEntries});
         }
