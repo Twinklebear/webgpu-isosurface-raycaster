@@ -4,12 +4,10 @@ import {mat4, vec3} from "gl-matrix";
 
 import shaderCode from "./shaders.wgsl";
 import {
-    colormaps,
     fetchVolume,
     fillSelector,
     getCubeMesh,
     getVolumeDimensions,
-    uploadImage,
     uploadVolume,
     volumes
 } from "./volume.js";

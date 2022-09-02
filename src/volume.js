@@ -1,10 +1,3 @@
-import coolwarm from "./colormaps/cool-warm-paraview.png";
-import plasma from "./colormaps/matplotlib-plasma.png";
-import virdis from "./colormaps/matplotlib-virdis.png";
-import rainbow from "./colormaps/rainbow.png";
-import samselGreen from "./colormaps/samsel-linear-green.png";
-import samselYgb from "./colormaps/samsel-linear-ygb-1211g.png";
-
 export const volumes = {
     "Fuel": "7d87jcsh0qodk78/fuel_64x64x64_uint8.raw",
     "Neghip": "zgocya7h33nltu9/neghip_64x64x64_uint8.raw",
@@ -15,15 +8,6 @@ export const volumes = {
     "Foot": "ic0mik3qv4vqacm/foot_256x256x256_uint8.raw",
     "Skull": "5rfjobn0lvb7tmo/skull_256x256x256_uint8.raw",
     "Aneurysm": "3ykigaiym8uiwbp/aneurism_256x256x256_uint8.raw",
-};
-
-export const colormaps = {
-    "Cool Warm": coolwarm,
-    "Matplotlib Plasma": plasma,
-    "Matplotlib Virdis": virdis,
-    "Rainbow": rainbow,
-    "Samsel Linear Green": samselGreen,
-    "Samsel Linear YGB 1211G": samselYgb,
 };
 
 export function getVolumeDimensions(file)
