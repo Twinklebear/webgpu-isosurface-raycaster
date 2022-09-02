@@ -101,9 +101,6 @@ fn grid_iterator_next_cell(iter: ptr<function, GridIterator, read_write>,
         return false;
     }
     // Return the current cell range and ID to the caller
-    // TODO: This will start to drift and be wrong, because the cell interval here is not starting
-    // at the entry of the cell, but ray t + cell, so it's kind of drifting off. Need to
-    // track the actual cell entry t value even if it's negative in the first cell.
     (*cell_t_range).x = (*iter).t;
     (*cell_t_range).y = min((*iter).t_max.x, min((*iter).t_max.y, (*iter).t_max.z));
     *cell_id = (*iter).cell;
@@ -256,7 +253,6 @@ fn marmitt_intersect(ray_org: float3,
     var f_in = evaluate_polynomial(poly, t_in);
     var f_out = evaluate_polynomial(poly, t_out);
     var roots = array<f32, 2>(0.0, 0.0);
-    // TODO: Seeming to get some holes in the surface with the Marmitt intersector
     if (solve_quadratic(float3(3.f * poly.x, 2.f * poly.y, poly.z), &roots)) {
         if (roots[0] >= t_in && roots[0] <= t_out) {
             let f_root0 = evaluate_polynomial(poly, roots[0]);
@@ -359,7 +355,6 @@ fn fragment_main(in: VertexOutput) -> @location(0) float4 {
     let ray_org = in.transformed_eye * float3(view_params.volume_dims.xyz) - float3(0.5);
     let dual_grid_dims = view_params.volume_dims.xyz - int3(1);
 
-    // TODO: For isosurface we need to translate onto the dual grid and use the dual grid dimensions
     var iter = init_grid_iterator(ray_org, ray_dir, t_hit.x, dual_grid_dims);
 
     var color = float4(0);
@@ -380,14 +375,19 @@ fn fragment_main(in: VertexOutput) -> @location(0) float4 {
                                         &t_hit_iso);
             if (hit) {
                 let hit_p = ray_org + t_hit_iso * ray_dir;
-                //color = float4(float3(t_hit_iso), 1.0);
-                //break;
 
                 var normal = compute_gradient(hit_p, float3(cell_id), &vertex_values);
                 if (dot(ray_dir, normal) > 0.0) {
                     normal = -normal;
                 }
-                color = float4((normal + float3(1.0)) * 0.5, 1.0);
+
+                // Apply some eye-light shading. h = -ray_dir since the light is coming from the eye
+                let base_color = float3(0.15, 0.15, 0.8);
+                let rd_dot_n = clamp(dot(normalize(-ray_dir), normal), 0.0, 1.0);
+                var color_rgb = 0.2 * base_color;
+                color_rgb += 0.6 * rd_dot_n * base_color;
+                color_rgb += 0.1 * pow(rd_dot_n, 5.0);
+                color = float4(color_rgb, 1.0);
                 break;
             }
         }
