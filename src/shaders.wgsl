@@ -86,9 +86,9 @@ fn init_grid_iterator(ray_org: float3, ray_dir: float3, t: f32, grid_dims: int3)
     return grid_iter;
 }
 
-fn grid_iterator_next_cell(iter: ptr<function, GridIterator, read_write>,
-                           cell_t_range: ptr<function, float2, read_write>,
-                           cell_id: ptr<function, int3, read_write>) -> bool {
+fn grid_iterator_next_cell(iter: ptr<function, GridIterator>,
+                           cell_t_range: ptr<function, float2>,
+                           cell_id: ptr<function, int3>) -> bool {
     // Please add arrow operator or something equivalent for it, this is terrible to type
     // and to read
     if (outside_grid((*iter).cell, (*iter).grid_dims)) {
@@ -121,7 +121,7 @@ fn grid_iterator_next_cell(iter: ptr<function, GridIterator, read_write>,
 // Vertex values will be returned in the order:
 // [v000, v100, v110, v010, v001, v101, v111, v011]
 // v000 = cell_id
-fn load_dual_cell(cell_id: int3, values: ptr<function, array<f32, 8>, read_write>) -> float2 {
+fn load_dual_cell(cell_id: int3, values: ptr<function, array<f32, 8>>) -> float2 {
     let index_to_vertex = array<int3, 8>(
         int3(0, 0, 0), // v000 = 0
         int3(1, 0, 0), // v100 = 1
@@ -148,7 +148,7 @@ fn load_dual_cell(cell_id: int3, values: ptr<function, array<f32, 8>, read_write
 fn compute_polynomial(p: float3,
                       dir: float3,
                       v000: float3,
-                      values: ptr<function, array<f32, 8>, read_write>) -> float4
+                      values: ptr<function, array<f32, 8>>) -> float4
 {
     let v111 = v000 + float3(1);
     // Note: Grid voxels sizes are 1^3
@@ -184,7 +184,7 @@ fn evaluate_polynomial(poly: float4, t: f32) -> f32 {
 }
 
 // Returns true if the quadratic has real roots
-fn solve_quadratic(poly: float3, roots: ptr<function, array<f32, 2>, read_write>) -> bool {
+fn solve_quadratic(poly: float3, roots: ptr<function, array<f32, 2>>) -> bool {
     // Check for case when poly is just Bt + c = 0
     if (poly.x == 0) {
         (*roots)[0] = -poly.z/poly.y;
@@ -206,7 +206,7 @@ fn solve_quadratic(poly: float3, roots: ptr<function, array<f32, 2>, read_write>
 // (origin = bottom-left-near point)
 fn trilinear_interpolate_in_cell(p: float3,
                                  v000: float3,
-                                 values: ptr<function, array<f32, 8>, read_write>) -> f32 {
+                                 values: ptr<function, array<f32, 8>>) -> f32 {
     let diff = clamp(p, v000, v000 + float3(1.0)) - v000;
     // Interpolate across x, then y, then z, and return the value normalized between 0 and 1
     let c00 = (*values)[0] * (1.f - diff.x) + (*values)[1] * diff.x;
@@ -221,10 +221,10 @@ fn trilinear_interpolate_in_cell(p: float3,
 fn marmitt_intersect(ray_org: float3,
                      ray_dir: float3,
                      v000: float3,
-                     values: ptr<function, array<f32, 8>, read_write>,
+                     values: ptr<function, array<f32, 8>>,
                      t_prev: f32,
                      t_next: f32,
-                     t_hit: ptr<function, f32, read_write>) -> bool
+                     t_hit: ptr<function, f32>) -> bool
 {
     if (t_next <= t_prev) {
         return false;
@@ -295,7 +295,7 @@ fn marmitt_intersect(ray_org: float3,
 
 fn compute_gradient(p: float3,
                     v000: float3,
-                    values: ptr<function, array<f32, 8>, read_write>) -> float3 {
+                    values: ptr<function, array<f32, 8>>) -> float3 {
     let v111 = v000 + float3(1);
     let delta_step = 0.005;
     let deltas = array<float3, 3>(

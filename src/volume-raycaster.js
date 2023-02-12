@@ -69,7 +69,7 @@ import {
     indexBuffer.unmap();
 
     // Create a buffer to store the view parameters
-    const viewParamsSize = 4 * (16 + 4 + 4 + 1);
+    const viewParamsSize = 4 * (16 + 4 + 4 + 1) + 12;
     var viewParamsBuffer = device.createBuffer(
         {size: viewParamsSize, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
 
@@ -157,7 +157,7 @@ import {
             view: undefined,
             loadOp: "clear",
             storeOp: "store",
-            clearValue: [0.3, 0.3, 0.3, 1]
+            clearValue: [1.0, 1.0, 1.0, 1]
         }]
     };
 
