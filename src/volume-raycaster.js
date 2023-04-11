@@ -33,7 +33,7 @@ import {
 
     // Setup shader modules
     var shaderModule = device.createShaderModule({code: shaderCode});
-    var compilationInfo = await shaderModule.compilationInfo();
+    var compilationInfo = await shaderModule.getCompilationInfo();
     if (compilationInfo.messages.length > 0) {
         var hadError = false;
         console.log("Shader compilation log:");
@@ -95,7 +95,7 @@ import {
     var volumeDims = getVolumeDimensions(volumes[volumeName]);
     var volumeTexture =
         await fetchVolume(volumes[volumeName])
-            .then((volumeData) => { return uploadVolume(device, volumeDims, volumeData); });
+            .then((volumeData) => {return uploadVolume(device, volumeDims, volumeData);});
 
     // Setup render outputs
     var swapChainFormat = "bgra8unorm";
@@ -168,7 +168,7 @@ import {
 
     // Register mouse and touch listeners
     var controller = new Controller();
-    controller.mousemove = function(prev, cur, evt) {
+    controller.mousemove = function (prev, cur, evt) {
         if (evt.buttons == 1) {
             camera.rotate(prev, cur);
 
@@ -176,16 +176,16 @@ import {
             camera.pan([cur[0] - prev[0], prev[1] - cur[1]]);
         }
     };
-    controller.wheel = function(amt) {
+    controller.wheel = function (amt) {
         camera.zoom(amt * 0.1);
     };
     controller.pinch = controller.wheel;
-    controller.twoFingerDrag = function(drag) {
+    controller.twoFingerDrag = function (drag) {
         camera.pan(drag);
     };
     controller.registerForCanvas(canvas);
 
-    var animationFrame = function() {
+    var animationFrame = function () {
         var resolve = null;
         var promise = new Promise(r => resolve = r);
         window.requestAnimationFrame(resolve);

@@ -1,11 +1,11 @@
 // Reduce clutter/keyboard pain
-type float2 = vec2<f32>;
-type float3 = vec3<f32>;
-type float4 = vec4<f32>;
-type int2 = vec2<i32>;
-type int3 = vec3<i32>;
-type int4 = vec4<i32>;
-type bool3 = vec3<bool>;
+alias float2 = vec2<f32>;
+alias float3 = vec3<f32>;
+alias float4 = vec4<f32>;
+alias int2 = vec2<i32>;
+alias int3 = vec3<i32>;
+alias int4 = vec4<i32>;
+alias bool3 = vec3<bool>;
 
 struct VertexInput {
     @location(0) position: float3,
